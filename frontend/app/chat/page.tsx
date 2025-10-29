@@ -269,6 +269,58 @@ export default function ChatPage() {
 
   /* ---------- Markdown Formatter ---------- */
   const formatAssistantResponse = (text: string): React.ReactNode => {
+    const renderMarkdown = (markdownText: string): React.ReactNode[] => {
+      const parts: React.ReactNode[] = [];
+      let lastIndex = 0;
+
+      // Bold text: **text** or __text__
+      markdownText = markdownText.replace(/(\*\*|__)(.*?)\1/g, '<strong>$2</strong>');
+
+      // Links: [link text](URL)
+      const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s]+)\)/g;
+      let match;
+
+      while ((match = linkRegex.exec(markdownText)) !== null) {
+        const [fullMatch, linkText, url] = match;
+        const startIndex = match.index;
+        const endIndex = linkRegex.lastIndex;
+
+        if (startIndex > lastIndex) {
+          parts.push(<span key={`text-${lastIndex}`}>{markdownText.substring(lastIndex, startIndex)}</span>);
+        }
+
+        parts.push(
+          <a
+            key={`link-${startIndex}`}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:underline"
+          >
+            {linkText}
+          </a>
+        );
+        lastIndex = endIndex;
+      }
+
+      if (lastIndex < markdownText.length) {
+        parts.push(<span key={`text-${lastIndex}`}>{markdownText.substring(lastIndex)}</span>);
+      }
+      
+      // Convert string parts with <strong> to React elements
+      return parts.flatMap(part => {
+        if (typeof part === 'string') {
+          return part.split(/(<strong>.*?<\/strong>)/g).map((subPart, i) => {
+            if (subPart.startsWith('<strong>') && subPart.endsWith('</strong>')) {
+              return <strong key={`strong-${i}`}>{subPart.slice(8, -9)}</strong>;
+            }
+            return subPart;
+          });
+        }
+        return part;
+      });
+    };
+
     const lines = text.split('\n');
     const elements: React.ReactNode[] = [];
     let inCode = false;
@@ -296,59 +348,42 @@ export default function ChatPage() {
       }
 
       if (line.startsWith('### ')) {
-        elements.push(<h3 key={i} className="text-lg font-bold mt-4 mb-2">{line.slice(4)}</h3>);
-      } else if (line.startsWith('## ')) {
-        elements.push(<h2 key={i} className="text-xl font-bold mt-5 mb-3">{line.slice(3)}</h2>);
-      } else if (line.startsWith('# ')) {
-        elements.push(<h1 key={i} className="text-2xl font-bold mt-6 mb-3">{line.slice(2)}</h1>);
-      } else if (line.startsWith('- ') || line.startsWith('* ')) {
-        elements.push(<li key={i} className="ml-6 list-disc text-sm">{line.slice(2)}</li>);
-      } else if (line.match(/^\d+\.\s/)) {
-        elements.push(<li key={i} className="ml-6 list-decimal text-sm">{line.replace(/^\d+\.\s/, '')}</li>);
-      } else if (line.trim() === '') {
-        elements.push(<div key={i} className="h-2" />);
+        elements.push(<h3 key={i} className="text-xl font-semibold my-3">{line.substring(4)}</h3>);
+        return;
+      }
+
+      if (line.startsWith('## ')) {
+        elements.push(<h2 key={i} className="text-2xl font-bold my-4">{line.substring(3)}</h2>);
+        return;
+      }
+
+      if (line.startsWith('# ')) {
+        elements.push(<h1 key={i} className="text-3xl font-extrabold my-5">{line.substring(2)}</h1>);
+        return;
+      }
+
+      if (line.trim() === '') {
+        elements.push(<br key={i} />);
       } else {
-        elements.push(<p key={i} className="text-sm leading-relaxed my-1.5">{line}</p>);
+        elements.push(<p key={i} className="my-1">{renderMarkdown(line)}</p>);
       }
     });
 
-    return <div className="prose prose-sm max-w-none dark:prose-invert">{elements}</div>;
+    return <>{elements}</>;
   };
 
   return (
     <>
       <Navbar />
-      <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-orange-50 via-amber-50 to-teal-50 dark:from-slate-900 dark:via-violet-950 dark:to-teal-950">
-        {/* Mouse Trail */}
-        <div
-          ref={mouseRef}
-          className="fixed w-80 h-80 rounded-full bg-gradient-to-r from-orange-400 via-amber-400 to-teal-400 opacity-20 blur-3xl pointer-events-none -z-10 transition-all duration-500"
-        />
-
-        {/* Bubbles */}
-        <div ref={bubbleRef} className="fixed inset-0 -z-10" />
-
-        {/* Wave */}
-        <div className="absolute inset-0 -z-10">
-          <svg className="w-full h-full" viewBox="0 0 1440 320" preserveAspectRatio="none">
-            <motion.path
-              fill="url(#wave-gradient)"
-              fillOpacity="0.08"
-              d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,112C672,96,768,96,864,112C960,128,1056,160,1152,160C1248,160,1344,128,1392,112L1440,96L1440,320L0,320Z"
-              animate={{
-                d: [
-                  "M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,112C672,96,768,96,864,112C960,128,1056,160,1152,160C1248,160,1344,128,1392,112L1440,96L1440,320L0,320Z",
-                  "M0,160L48,144C96,128,192,96,288,96C384,96,480,128,576,149C672,170,768,181,864,170C960,160,1056,128,1152,112C1248,96,1344,96,1392,96L1440,96L1440,320L0,320Z",
-                ],
-              }}
-              transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
-            />
+      <main className="relative min-h-screen overflow-hidden">
+        <div className="mouse-trail-gradient fixed inset-0 -z-20 opacity-50" ref={mouseRef}>
+          <div className="bubble-container absolute inset-0" ref={bubbleRef} />
+          <svg className="absolute inset-0 w-full h-full">
             <defs>
-              <linearGradient id="wave-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#fb923c" stopOpacity="0.6" />
-                <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#14b8a6" stopOpacity="0.2" />
-              </linearGradient>
+              <radialGradient id="mouseGradient" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+                <stop offset="0%" stopColor="rgba(251,146,60,0.3)" />
+                <stop offset="100%" stopColor="rgba(251,146,60,0)" />
+              </radialGradient>
             </defs>
           </svg>
         </div>

@@ -343,6 +343,9 @@ export default function Home() {
         {/* Image AI */}
         <ImageAISection />
 
+        {/* Team Members Section */}
+        <TeamMembersSection />
+
         {/* CTA */}
         <CTASection />
       </main>
@@ -575,6 +578,57 @@ const ImageAISection = () => {
                   </div>
                 </Card>
               </Link>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const TeamMembersSection = () => {
+  const [ref, inView] = useInView({ triggerOnce: true, threshold: 0.1 });
+
+  const teamMembers = [
+    { name: "Muhammad Anique", expertise: "AI Engineer", role: "Team Leader" },
+    { name: "Sajjad Ahmad", expertise: "ML and GEN AI", role: "Expert" },
+    { name: "Izzah Khursheed", expertise: "AI and GEN AI", role: "Expert" },
+  ];
+
+  return (
+    <section ref={ref} className="py-32 relative">
+      <div className="absolute inset-0 -z-10">
+        <div className="bubble-effect w-32 h-32 bg-amber-400/10 rounded-full blur-xl top-1/3 right-1/4 animate-pulse" />
+      </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <motion.h2
+          initial={{ opacity: 0, y: 50 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          className="text-5xl md:text-6xl font-bold text-center mb-20 bg-gradient-to-r from-orange-600 to-teal-600 bg-clip-text text-transparent"
+        >
+          Our Visionary Team
+        </motion.h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+          {teamMembers.map((member, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 50 }}
+              animate={inView ? { opacity: 1, y: 0 } : {}}
+              transition={{ delay: i * 0.2 }}
+              whileHover={{ scale: 1.05, rotate: 1 }}
+              className="group relative"
+            >
+              <Card className="glass-enhanced p-10 h-full border border-white/10 hover:border-orange-500/30 transition-all duration-500 hover:shadow-2xl backdrop-blur-xl relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-amber-500/5" />
+                <div className="relative z-10 text-center">
+                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white text-4xl font-bold mx-auto mb-6 group-hover:scale-110 transition">
+                    {member.name.split(' ').map(n => n[0]).join('')}
+                  </div>
+                  <h3 className="text-2xl font-bold mb-2 relative z-10">{member.name}</h3>
+                  <p className="text-lg text-orange-400 font-medium mb-2 relative z-10">{member.role}</p>
+                  <p className="text-foreground/70 relative z-10">{member.expertise}</p>
+                </div>
+              </Card>
             </motion.div>
           ))}
         </div>

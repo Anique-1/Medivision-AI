@@ -31,9 +31,8 @@ export function Footer() {
   };
 
   const socialLinks = [
-    { href: "https://twitter.com", icon: <Twitter className="w-5 h-5" />, label: "Twitter" },
-    { href: "https://linkedin.com", icon: <Linkedin className="w-5 h-5" />, label: "LinkedIn" },
-    { href: "https://github.com", icon: <Github className="w-5 h-5" />, label: "GitHub" },
+    { href: "https://www.linkedin.com/in/muhammad-anique-300828266/", icon: <Linkedin className="w-5 h-5" />, label: "LinkedIn" },
+    { href: "https://github.com/Anique-1", icon: <Github className="w-5 h-5" />, label: "GitHub" },
   ];
 
   return (
@@ -75,11 +74,6 @@ export function Footer() {
             <p className="text-foreground/70 max-w-xs leading-relaxed">
               Pakistan's first <strong className="text-orange-600">Agentic Health AI</strong> — autonomously managing medicines, doctors, and diagnostics 24/7.
             </p>
-
-            <div className="flex items-center gap-2 text-sm text-foreground/60">
-              <Heart className="w-4 h-4 text-red-500 animate-pulse" />
-              <span>Made with love in Pakistan</span>
-            </div>
           </motion.div>
 
           {/* Link Columns */}
