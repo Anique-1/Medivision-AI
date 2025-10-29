@@ -130,7 +130,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def health_check():
     return {
         "status": "healthy",
-        "service": "Medicine Dispenser API",
+        "service": "MediVision API",
         "version": "1.0.0"
     }
 
