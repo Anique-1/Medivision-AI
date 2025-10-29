@@ -1,551 +1,517 @@
-"use client"
+"use client";
 
-import React from "react"
-import { useState, useRef, useEffect } from "react"
-import { Navbar } from "@/components/layout/navbar"
-import { Footer } from "@/components/layout/footer"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Send, Paperclip, Mic, MessageCircle, Plus } from "lucide-react"
-import { fetchWithAuth } from "@/lib/api"
-import { useToast } from "@/components/ui/use-toast"
+import React, { useState, useRef, useEffect } from "react";
+import { Navbar } from "@/components/layout/navbar";
+import { Footer } from "@/components/layout/footer";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Send, Paperclip, Mic, MessageCircle, Plus, Sparkles, Clock } from "lucide-react";
+import { fetchWithAuth } from "@/lib/api";
+import { useToast } from "@/components/ui/use-toast";
+import { motion, useScroll, useTransform } from "framer-motion";
+import { useInView } from "react-intersection-observer";
+import { cn } from "@/lib/utils";
+import { ChatMessageDisplay } from "@/components/ChatMessageDisplay";
 
 interface ChatMessage {
-  id: number
-  message: string
-  response: string
-  message_type: "text" | "image" | "audio"
-  created_at: string
+  id: number;
+  message: string;
+  response: string;
+  message_type: "text" | "image" | "audio";
+  created_at: string;
 }
 
 interface DisplayMessage {
-  id: string
-  role: "user" | "assistant"
-  content: string | React.ReactNode
-  timestamp: Date
-  message_type: "text" | "image" | "audio"
+  id: string;
+  role: "user" | "assistant";
+  content: string | React.ReactNode;
+  timestamp: Date;
+  message_type: "text" | "image" | "audio";
+  imageUrl?: string;
 }
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<DisplayMessage[]>([])
-  const [input, setInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const { toast } = useToast()
+  // === ALL HOOKS AT TOP LEVEL (Fixed Order) ===
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const mouseRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { scrollYProgress } = useScroll();
+  const y = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
+  const { toast } = useToast();
+
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [chatHistory, setChatHistory] = useState<{ id: number; title: string; date: string }[]>([]);
+
+  // === NO MORE useState INSIDE useEffect ===
+
+  /* ---------- Mouse Trail & Bubbles ---------- */
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      if (mouseRef.current) {
+        mouseRef.current.style.transform = `translate(${e.clientX - 150}px, ${e.clientY - 150}px)`;
+      }
+    };
+    window.addEventListener("mousemove", handle);
+    return () => window.removeEventListener("mousemove", handle);
+  }, []);
+
+  useEffect(() => {
+    const container = bubbleRef.current;
+    if (!container) return;
+
+    const create = () => {
+      const b = document.createElement("div");
+      const size = Math.random() * 120 + 40;
+      const dur = Math.random() * 25 + 20;
+      const delay = Math.random() * 10;
+      const depth = Math.random() * 0.9 + 0.1;
+
+      b.className = "bubble-effect absolute rounded-full pointer-events-none";
+      b.style.width = b.style.height = `${size}px`;
+      b.style.left = `${Math.random() * 100}%`;
+      b.style.bottom = `-200px`;
+      b.style.background = `radial-gradient(circle at 30% 30%,
+        rgba(251,146,60,${depth * 0.8}) ${depth * 100}%,
+        rgba(245,158,11,${depth * 0.4}) ${depth * 50}%,
+        transparent 100%)`;
+      b.style.filter = `blur(${Math.max(size / 30, 2)}px) saturate(1.2)`;
+      b.style.transform = `translateZ(0) scale(${depth})`;
+      b.style.animation = `float3d ${dur}s ease-in-out ${delay}s infinite alternate`;
+      b.style.boxShadow = `0 0 ${size / 4}px rgba(251,146,60,${depth * 0.3})`;
+
+      container.appendChild(b);
+      setTimeout(() => b.remove(), (dur + delay) * 1000);
+    };
+
+    const iv = setInterval(create, 400);
+    return () => clearInterval(iv);
+  }, []);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    scrollToBottom();
+  }, [messages]);
 
+  /* ---------- Load Chat History ---------- */
   useEffect(() => {
-    const fetchChatHistory = async () => {
-      setIsLoading(true)
+    const fetchData = async () => {
+      setIsLoading(true);
       try {
-        const history: ChatMessage[] = await fetchWithAuth("/chat/history")
-        const formattedHistory: DisplayMessage[] = history.reverse().flatMap((chat) => [
-          {
+        const history: ChatMessage[] = await fetchWithAuth("/chat/history");
+        const formatted: DisplayMessage[] = history.reverse().flatMap((chat) => {
+          const userMsg: DisplayMessage = {
             id: `${chat.id}-user`,
             role: "user",
             content: chat.message,
             timestamp: new Date(chat.created_at),
             message_type: chat.message_type,
-          },
-          {
+          };
+          const assistantMsg: DisplayMessage = {
             id: `${chat.id}-assistant`,
             role: "assistant",
             content: formatAssistantResponse(chat.response),
             timestamp: new Date(chat.created_at),
             message_type: chat.message_type,
-          },
-        ])
+          };
+          return [userMsg, assistantMsg];
+        });
+
         setMessages([
           {
-            id: "initial",
+            id: "welcome",
             role: "assistant",
-            content:
-              "Hello! I'm your AI Medical Assistant. How can I help you today? You can ask me about medicines, health conditions, or upload medical images for analysis.",
+            content: (
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-400" />
+                <span>Hello! I'm your AI Medical Assistant. Ask me anything about your health, medicines, or upload an image for analysis.</span>
+              </div>
+            ),
             timestamp: new Date(),
             message_type: "text",
           },
-          ...formattedHistory,
-        ])
+          ...formatted,
+        ]);
+
+        // Mock sidebar history
+        setChatHistory([
+          { id: 1, title: "Medicine Schedule", date: "Oct 28" },
+          { id: 2, title: "Blood Test Results", date: "Oct 25" },
+          { id: 3, title: "Allergy Question", date: "Oct 20" },
+        ]);
       } catch (error: any) {
         toast({
           title: "Error",
-          description: error.message || "Failed to fetch chat history.",
+          description: error.message || "Failed to load chat.",
           variant: "destructive",
-        })
+        });
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    fetchChatHistory()
-  }, [toast])
+    fetchData();
+  }, [toast]);
 
-  const handleNewChat = () => {
-    setMessages([
-      {
-        id: "initial",
-        role: "assistant",
-        content:
-          "Hello! I'm your AI Medical Assistant. How can I help you today? You can ask me about medicines, health conditions, or upload medical images for analysis.",
-        timestamp: new Date(),
-        message_type: "text",
-      },
-    ])
-    setInput("")
-  }
-
+  /* ---------- Send Message ---------- */
   const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim()) return
+    e.preventDefault();
+    if (!input.trim()) return;
 
-    const userMessage: DisplayMessage = {
+    const userMsg: DisplayMessage = {
       id: Date.now().toString(),
       role: "user",
       content: input,
       timestamp: new Date(),
       message_type: "text",
-    }
+    };
 
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsLoading(true)
-
-    try {
-      const response = await fetchWithAuth("/chat/message", {
-        method: "POST",
-        body: JSON.stringify({ message: userMessage.content }),
-      })
-      const assistantMessage: DisplayMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: formatAssistantResponse(response.response),
-        timestamp: new Date(),
-        message_type: "text",
-      }
-      setMessages((prev) => [...prev, assistantMessage])
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to send message.",
-        variant: "destructive",
-      })
-      const errorMessage: DisplayMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "Sorry, I couldn't process your request. Please try again.",
-        timestamp: new Date(),
-        message_type: "text",
-      }
-      setMessages((prev) => [...prev, errorMessage])
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleImageUploadClick = () => {
-    fileInputRef.current?.click()
-  }
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const userMessage: DisplayMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: `Uploaded image: ${file.name}`,
-      timestamp: new Date(),
-      message_type: "image",
-    }
-    setMessages((prev) => [...prev, userMessage])
-    setIsLoading(true)
-
-    const formData = new FormData()
-    formData.append("file", file)
-    if (input.trim()) {
-      formData.append("message", input.trim())
-    }
+    setMessages(prev => [...prev, userMsg]);
+    setInput("");
+    setIsLoading(true);
 
     try {
-      const response = await fetchWithAuth("/chat/image", {
+      const res = await fetchWithAuth("/chat/message", {
         method: "POST",
-        body: formData,
-      })
+        body: JSON.stringify({ message: input }),
+      });
 
-      const assistantMessage: DisplayMessage = {
+      const assistantMsg: DisplayMessage = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: formatAssistantResponse(response.response),
+        content: formatAssistantResponse(res.response),
         timestamp: new Date(),
         message_type: "text",
-      }
-      setMessages((prev) => [...prev, assistantMessage])
-      setInput("")
+      };
+      setMessages(prev => [...prev, assistantMsg]);
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to upload image.",
-        variant: "destructive",
-      })
-      const errorMessage: DisplayMessage = {
+      toast({ title: "Error", description: "Failed to send.", variant: "destructive" });
+      setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "Sorry, I couldn't process your image. Please try again.",
+        content: "Sorry, I couldn't respond. Try again.",
         timestamp: new Date(),
         message_type: "text",
-      }
-      setMessages((prev) => [...prev, errorMessage])
+      }]);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  // Enhanced formatter for assistant responses with comprehensive markdown support
+  /* ---------- Image Upload ---------- */
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const userMsg: DisplayMessage = {
+        id: Date.now().toString(),
+        role: "user",
+        content: (
+          <div className="space-y-2">
+            <img src={reader.result as string} alt="Uploaded" className="max-w-xs rounded-lg shadow-lg" />
+            <p className="text-xs text-foreground/60">{file.name}</p>
+          </div>
+        ),
+        timestamp: new Date(),
+        message_type: "image",
+        imageUrl: reader.result as string,
+      };
+      setMessages(prev => [...prev, userMsg]);
+    };
+    reader.readAsDataURL(file);
+
+    setIsLoading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    if (input.trim()) formData.append("message", input.trim());
+
+    try {
+      const res = await fetchWithAuth("/chat/image", { method: "POST", body: formData });
+      const assistantMsg: DisplayMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: formatAssistantResponse(res.response),
+        timestamp: new Date(),
+        message_type: "text",
+      };
+      setMessages(prev => [...prev, assistantMsg]);
+    } catch (error: any) {
+      toast({ title: "Error", description: "Image analysis failed.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+      setInput("");
+    }
+  };
+
+  const handleNewChat = () => {
+    setMessages([
+      {
+        id: "welcome",
+        role: "assistant",
+        content: (
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-amber-400" />
+            <span>New chat started! How can I help?</span>
+          </div>
+        ),
+        timestamp: new Date(),
+        message_type: "text",
+      },
+    ]);
+  };
+
+  /* ---------- Markdown Formatter ---------- */
   const formatAssistantResponse = (text: string): React.ReactNode => {
-    const lines = text.split('\n')
-    const elements: React.ReactNode[] = []
-    let listItems: string[] = []
-    let listType: 'bullet' | 'numbered' | null = null
-    let inCodeBlock = false
-    let codeBlockContent: string[] = []
-    let codeLanguage = ''
+    const lines = text.split('\n');
+    const elements: React.ReactNode[] = [];
+    let inCode = false;
+    let codeLines: string[] = [];
 
-    const flushList = () => {
-      if (listItems.length > 0) {
-        if (listType === 'bullet') {
+    lines.forEach((line, i) => {
+      if (line.startsWith('```')) {
+        if (inCode) {
           elements.push(
-            <ul key={`list-${elements.length}`} className="list-disc list-inside space-y-1 my-2 ml-4">
-              {listItems.map((item, idx) => (
-                <li key={idx} className="text-sm">{processInlineFormatting(item)}</li>
-              ))}
-            </ul>
-          )
-        } else if (listType === 'numbered') {
-          elements.push(
-            <ol key={`list-${elements.length}`} className="list-decimal list-inside space-y-1 my-2 ml-4">
-              {listItems.map((item, idx) => (
-                <li key={idx} className="text-sm">{processInlineFormatting(item)}</li>
-              ))}
-            </ol>
-          )
-        }
-        listItems = []
-        listType = null
-      }
-    }
-
-    const flushCodeBlock = () => {
-      if (codeBlockContent.length > 0) {
-        elements.push(
-          <pre key={`code-${elements.length}`} className="bg-muted p-3 rounded-md my-2 overflow-x-auto">
-            <code className="text-sm font-mono">{codeBlockContent.join('\n')}</code>
-          </pre>
-        )
-        codeBlockContent = []
-        codeLanguage = ''
-      }
-    }
-
-    lines.forEach((line, index) => {
-      // Handle code blocks
-      if (line.trim().startsWith('```')) {
-        if (inCodeBlock) {
-          flushCodeBlock()
-          inCodeBlock = false
+            <pre key={i} className="bg-muted/50 p-4 rounded-xl overflow-x-auto text-sm font-mono my-3 border border-white/10">
+              <code>{codeLines.join('\n')}</code>
+            </pre>
+          );
+          inCode = false;
+          codeLines = [];
         } else {
-          flushList()
-          inCodeBlock = true
-          codeLanguage = line.trim().substring(3)
+          inCode = true;
         }
-        return
+        return;
       }
 
-      if (inCodeBlock) {
-        codeBlockContent.push(line)
-        return
+      if (inCode) {
+        codeLines.push(line);
+        return;
       }
 
-      // Handle headers
-      if (line.match(/^#{1,6}\s/)) {
-        flushList()
-        const level = line.match(/^#+/)?.[0].length || 1
-        const text = line.replace(/^#+\s/, '')
-        const HeaderTag = `h${Math.min(level, 6)}`
-        const sizeClasses = {
-          1: 'text-2xl font-bold',
-          2: 'text-xl font-bold',
-          3: 'text-lg font-semibold',
-          4: 'text-base font-semibold',
-          5: 'text-sm font-semibold',
-          6: 'text-sm font-medium'
-        }
-        elements.push(
-          React.createElement(
-            HeaderTag,
-            {
-              key: `header-${index}`,
-              className: `${sizeClasses[level as keyof typeof sizeClasses]} my-2`
-            },
-            processInlineFormatting(text)
-          )
-        )
-        return
-      }
-
-      // Handle bullet lists (-, *, +)
-      if (line.match(/^\s*[-*+]\s+/)) {
-        if (listType !== 'bullet') {
-          flushList()
-          listType = 'bullet'
-        }
-        listItems.push(line.replace(/^\s*[-*+]\s+/, ''))
-        return
-      }
-
-      // Handle numbered lists
-      if (line.match(/^\s*\d+\.\s+/)) {
-        if (listType !== 'numbered') {
-          flushList()
-          listType = 'numbered'
-        }
-        listItems.push(line.replace(/^\s*\d+\.\s+/, ''))
-        return
-      }
-
-      // Handle horizontal rules
-      if (line.match(/^[-*_]{3,}$/)) {
-        flushList()
-        elements.push(<hr key={`hr-${index}`} className="my-3 border-border" />)
-        return
-      }
-
-      // Handle blockquotes
-      if (line.match(/^>\s/)) {
-        flushList()
-        const quoteText = line.replace(/^>\s/, '')
-        elements.push(
-          <blockquote key={`quote-${index}`} className="border-l-4 border-primary pl-3 italic my-2 text-muted-foreground">
-            {processInlineFormatting(quoteText)}
-          </blockquote>
-        )
-        return
-      }
-
-      // Regular paragraphs
-      if (line.trim()) {
-        flushList()
-        elements.push(
-          <p key={`p-${index}`} className="text-sm my-1.5 leading-relaxed">
-            {processInlineFormatting(line)}
-          </p>
-        )
+      if (line.startsWith('### ')) {
+        elements.push(<h3 key={i} className="text-lg font-bold mt-4 mb-2">{line.slice(4)}</h3>);
+      } else if (line.startsWith('## ')) {
+        elements.push(<h2 key={i} className="text-xl font-bold mt-5 mb-3">{line.slice(3)}</h2>);
+      } else if (line.startsWith('# ')) {
+        elements.push(<h1 key={i} className="text-2xl font-bold mt-6 mb-3">{line.slice(2)}</h1>);
+      } else if (line.startsWith('- ') || line.startsWith('* ')) {
+        elements.push(<li key={i} className="ml-6 list-disc text-sm">{line.slice(2)}</li>);
+      } else if (line.match(/^\d+\.\s/)) {
+        elements.push(<li key={i} className="ml-6 list-decimal text-sm">{line.replace(/^\d+\.\s/, '')}</li>);
+      } else if (line.trim() === '') {
+        elements.push(<div key={i} className="h-2" />);
       } else {
-        flushList()
-        if (elements.length > 0) {
-          elements.push(<div key={`space-${index}`} className="h-2" />)
-        }
+        elements.push(<p key={i} className="text-sm leading-relaxed my-1.5">{line}</p>);
       }
-    })
+    });
 
-    flushList()
-    flushCodeBlock()
-
-    return <div className="space-y-1">{elements}</div>
-  }
-
-  // Process inline formatting (bold, italic, code, links)
-  const processInlineFormatting = (text: string): React.ReactNode => {
-    const parts: React.ReactNode[] = []
-    let remaining = text
-    let key = 0
-
-    while (remaining.length > 0) {
-      // Match patterns in order: links, bold, italic, inline code
-      const linkMatch = remaining.match(/^(https?:\/\/[^\s<]+[^\s<.,;:!?)\]]|www\.[^\s<]+[^\s<.,;:!?)\]])/)
-      const boldMatch = remaining.match(/^\*\*(.+?)\*\*/)
-      const italicMatch = remaining.match(/^\*(.+?)\*(?!\*)/)
-      const codeMatch = remaining.match(/^`(.+?)`/)
-      const strikeMatch = remaining.match(/^~~(.+?)~~/)
-
-      if (linkMatch) {
-        const url = linkMatch[0]
-        const href = url.startsWith('http') ? url : `https://${url}`
-        parts.push(
-          <a
-            key={key++}
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline hover:text-primary/80 break-all"
-          >
-            {url}
-          </a>
-        )
-        remaining = remaining.substring(url.length)
-      } else if (boldMatch) {
-        parts.push(<strong key={key++} className="font-semibold">{boldMatch[1]}</strong>)
-        remaining = remaining.substring(boldMatch[0].length)
-      } else if (italicMatch && !remaining.startsWith('**')) {
-        parts.push(<em key={key++} className="italic">{italicMatch[1]}</em>)
-        remaining = remaining.substring(italicMatch[0].length)
-      } else if (codeMatch) {
-        parts.push(
-          <code key={key++} className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">
-            {codeMatch[1]}
-          </code>
-        )
-        remaining = remaining.substring(codeMatch[0].length)
-      } else if (strikeMatch) {
-        parts.push(<del key={key++} className="line-through">{strikeMatch[1]}</del>)
-        remaining = remaining.substring(strikeMatch[0].length)
-      } else {
-        // Add regular character
-        parts.push(remaining[0])
-        remaining = remaining.substring(1)
-      }
-    }
-
-    return <>{parts}</>
-  }
+    return <div className="prose prose-sm max-w-none dark:prose-invert">{elements}</div>;
+  };
 
   return (
     <>
       <Navbar />
-      <main className="min-h-screen bg-muted/30 flex flex-col">
-        <div className="flex-1 flex overflow-hidden">
-          {/* Sidebar */}
-          <div className="hidden md:flex w-64 bg-background border-r border-border flex-col">
-            <div className="p-4 border-b border-border">
-              <Button className="w-full gap-2 justify-start" onClick={handleNewChat}>
-                <Plus size={20} />
-                New Chat
-              </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              <div className="p-3 rounded-lg bg-primary/10 text-primary text-sm font-medium cursor-pointer">
-                Current Chat
-              </div>
-            </div>
-          </div>
+      <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-orange-50 via-amber-50 to-teal-50 dark:from-slate-900 dark:via-violet-950 dark:to-teal-950">
+        {/* Mouse Trail */}
+        <div
+          ref={mouseRef}
+          className="fixed w-80 h-80 rounded-full bg-gradient-to-r from-orange-400 via-amber-400 to-teal-400 opacity-20 blur-3xl pointer-events-none -z-10 transition-all duration-500"
+        />
 
-          {/* Chat Area */}
-          <div className="flex-1 flex flex-col">
-            {/* Chat Header */}
-            <div className="border-b border-border bg-background p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center text-white">
-                  <MessageCircle size={20} />
-                </div>
-                <div>
-                  <h2 className="font-bold">AI Medical Assistant</h2>
-                  <p className="text-xs text-accent">Online</p>
-                </div>
-              </div>
-            </div>
+        {/* Bubbles */}
+        <div ref={bubbleRef} className="fixed inset-0 -z-10" />
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-xs lg:max-w-2xl px-4 py-3 rounded-lg ${
-                      message.role === "user"
-                        ? "bg-primary text-primary-foreground rounded-br-none"
-                        : "glass border border-border rounded-bl-none"
-                    }`}
-                  >
-                    {message.message_type === "text" && (
-                      <div className="prose prose-sm max-w-none dark:prose-invert">
-                        {typeof message.content === "string" ? (
-                          <p className="text-sm">{message.content}</p>
-                        ) : (
-                          message.content
-                        )}
-                      </div>
-                    )}
-                    {message.message_type === "image" && (
-                      <div>
-                        <p className="text-sm mb-2">Image uploaded:</p>
-                        <p className="text-sm text-foreground/60">
-                          {typeof message.content === "string" ? message.content : "Image content"}
-                        </p>
-                      </div>
-                    )}
-                    <p
-                      className={`text-xs mt-2 ${
-                        message.role === "user" ? "text-primary-foreground/70" : "text-foreground/50"
-                      }`}
-                    >
-                      {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="glass border border-border px-4 py-3 rounded-lg rounded-bl-none">
-                    <div className="flex gap-2">
-                      <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" />
-                      <div
-                        className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.1s" }}
-                      />
-                      <div
-                        className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.2s" }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input Area */}
-            <div className="border-t border-border bg-background p-4">
-              <form onSubmit={handleSendMessage} className="flex gap-3">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  className="hidden"
-                  accept="image/*"
-                />
-                <Button type="button" size="icon" variant="outline" onClick={handleImageUploadClick}>
-                  <Paperclip size={20} />
-                </Button>
-                <Button type="button" size="icon" variant="outline">
-                  <Mic size={20} />
-                </Button>
-                <Input
-                  type="text"
-                  placeholder="Ask me anything about your health..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  className="flex-1"
-                />
-                <Button type="submit" size="icon" disabled={isLoading || !input.trim()}>
-                  <Send size={20} />
-                </Button>
-              </form>
-            </div>
-          </div>
+        {/* Wave */}
+        <div className="absolute inset-0 -z-10">
+          <svg className="w-full h-full" viewBox="0 0 1440 320" preserveAspectRatio="none">
+            <motion.path
+              fill="url(#wave-gradient)"
+              fillOpacity="0.08"
+              d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,112C672,96,768,96,864,112C960,128,1056,160,1152,160C1248,160,1344,128,1392,112L1440,96L1440,320L0,320Z"
+              animate={{
+                d: [
+                  "M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,112C672,96,768,96,864,112C960,128,1056,160,1152,160C1248,160,1344,128,1392,112L1440,96L1440,320L0,320Z",
+                  "M0,160L48,144C96,128,192,96,288,96C384,96,480,128,576,149C672,170,768,181,864,170C960,160,1056,128,1152,112C1248,96,1344,96,1392,96L1440,96L1440,320L0,320Z",
+                ],
+              }}
+              transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <defs>
+              <linearGradient id="wave-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#fb923c" stopOpacity="0.6" />
+                <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.4" />
+                <stop offset="100%" stopColor="#14b8a6" stopOpacity="0.2" />
+              </linearGradient>
+            </defs>
+          </svg>
         </div>
+
+        <section className="relative py-20">
+          <motion.div style={{ y }} className="absolute inset-0 -z-10 bg-gradient-to-t from-orange-100/30 via-amber-50/20 to-teal-50/10" />
+
+          <div className="max-w-7xl mx-auto h-screen flex flex-col px-4 sm:px-6 lg:px-8">
+            {/* Header */}
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center mb-8"
+            >
+              <h1 className="text-5xl md:text-7xl font-bold tracking-tight">
+                <span className="bg-gradient-to-r from-orange-600 via-amber-600 to-teal-600 bg-clip-text text-transparent">
+                  AI Medical Assistant
+                </span>
+              </h1>
+              <p className="mt-3 text-lg text-foreground/70">Ask anything. Upload images. Get instant insights.</p>
+            </motion.div>
+
+            <div className="flex-1 glass-enhanced rounded-3xl border border-white/20 backdrop-blur-xl shadow-3xl overflow-hidden flex">
+              {/* Sidebar */}
+              <div className="hidden lg:block w-80 glass-enhanced border-r border-white/10 p-6 space-y-4">
+                <Button
+                  onClick={handleNewChat}
+                  className="w-full h-14 glass-button bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white"
+                >
+                  <Plus className="w-5 h-5 mr-2" /> New Chat
+                </Button>
+                <div className="space-y-2">
+                  {chatHistory.map((chat) => (
+                    <motion.div
+                      key={chat.id}
+                      whileHover={{ scale: 1.02 }}
+                      className="p-4 glass-enhanced rounded-xl border border-white/10 cursor-pointer hover:border-orange-500/30 transition-all"
+                    >
+                      <h4 className="font-medium text-foreground">{chat.title}</h4>
+                      <p className="text-xs text-foreground/60 flex items-center gap-1 mt-1">
+                        <Clock className="w-3 h-3" /> {chat.date}
+                      </p>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Chat Area */}
+              <div className="flex-1 flex flex-col">
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                  {messages.map((msg, i) => (
+                    <ChatMessageDisplay key={msg.id} msg={msg} index={i} />
+                  ))}
+
+                  {isLoading && (
+                    <div className="flex justify-start">
+                      <div className="glass-enhanced p-5 rounded-2xl border border-white/10">
+                        <div className="flex gap-2">
+                          <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" />
+                          <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
+                          <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input */}
+                <div className="p-6 border-t border-white/10 bg-gradient-to-t from-white/5 to-transparent">
+                  <form onSubmit={handleSendMessage} className="flex gap-3">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleImageUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="glass-button hover:bg-white/10"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </Button>
+                    <Button type="button" size="icon" variant="ghost" className="glass-button hover:bg-white/10">
+                      <Mic className="w-5 h-5" />
+                    </Button>
+                    <Input
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder="Ask about medicines, symptoms, or upload an image..."
+                      className="flex-1 glass-input bg-white/5 border-white/20 h-14 text-lg"
+                    />
+                    <Button
+                      type="submit"
+                      size="icon"
+                      disabled={isLoading || !input.trim()}
+                      className="h-14 w-14 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600"
+                    >
+                      <Send className="w-5 h-5" />
+                    </Button>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            {/* Mobile New Chat FAB */}
+            <Button
+              onClick={handleNewChat}
+              size="icon"
+              className="fixed bottom-8 right-8 h-14 w-14 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-2xl lg:hidden"
+            >
+              <Plus className="w-6 h-6" />
+            </Button>
+          </div>
+        </section>
       </main>
+
       <Footer />
+
+      {/* CSS */}
+      <style jsx>{`
+        .bubble-effect { animation: float3d 25s ease-in-out infinite alternate; }
+        @keyframes float3d {
+          0% { transform: translateY(0) translateX(0) rotate(0deg) scale(1); opacity: 0; }
+          10% { opacity: 0.8; }
+          90% { opacity: 0.4; }
+          100% { transform: translateY(-120vh) translateX(150px) rotate(720deg) scale(0.8); opacity: 0; }
+        }
+        .glass-enhanced {
+          background: rgba(255,255,255,0.08);
+          backdrop-filter: blur(30px);
+          -webkit-backdrop-filter: blur(30px);
+          border: 1px solid rgba(255,255,255,0.15);
+          box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1);
+        }
+        .glass-input {
+          background: rgba(255,255,255,0.1);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255,255,255,0.2);
+          color: white;
+        }
+        .glass-button {
+          background: rgba(255,255,255,0.05);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255,255,255,0.1);
+          transition: all 0.3s ease;
+        }
+        .glass-button:hover {
+          background: rgba(255,255,255,0.1);
+          border-color: rgba(255,255,255,0.2);
+        }
+        .dark .glass-enhanced,
+        .dark .glass-button,
+        .dark .glass-input {
+          background: rgba(15,23,42,0.6);
+          border-color: rgba(255,255,255,0.05);
+        }
+      `}</style>
     </>
-  )
+  );
 }

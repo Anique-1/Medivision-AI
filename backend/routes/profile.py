@@ -91,6 +91,12 @@ async def delete_account(
     return {"message": "Account deleted successfully"}
 
 @router.get("/stats")
+@router.get("/")
+async def profile_root():
+    """Root endpoint for profile API"""
+    return {"message": "Profile API root. Use /me or /stats."}
+
+@router.get("/stats")
 async def get_profile_stats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
