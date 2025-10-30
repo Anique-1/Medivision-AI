@@ -157,7 +157,12 @@ export default function ModelPage({ params }: { params: Promise<{ model: string 
     try {
       const raw = await fetchWithAuth(MODEL_ENDPOINTS[modelKey], { method: "POST", body: formData });
       const result: AnalysisResult = modelKey === "bone_cancer_detection_model"
-        ? { yolo_detections: raw.yolo_detections, interpretation: raw.interpretation, timestamp: raw.timestamp }
+        ? {
+            yolo_detections: raw.yolo_detections,
+            interpretation: raw.interpretation,
+            timestamp: raw.timestamp,
+            annotated_image_url: raw.annotated_image_url
+          }
         : raw;
 
       setAnalysisResult(result);

@@ -41,7 +41,7 @@ const getIcon = (key: string) => {
    -------------------------------------------------------------- */
 const models = [
   {
-    name: "Bone Fracture Detection",
+    name: "Bone Cancer Detection",
     description: "YOLOv11-powered fracture classification with 98.7% accuracy",
     icon: "X-Ray",
     href: "/models/bone_detection_model",
@@ -242,7 +242,7 @@ export default function ModelsPage() {
               </h1>
 
               <p className="text-xl md:text-2xl text-foreground/70 max-w-4xl mx-auto">
-                State-of-the-art <strong className="text-orange-600">YOLOv8</strong> models trained on{" "}
+                State-of-the-art <strong className="text-orange-600">YOLOv11</strong> models trained on{" "}
                 <strong className="text-teal-600">1M+ medical images</strong> — delivering{" "}
                 <strong className="text-purple-600">radiologist-level precision</strong>.
               </p>

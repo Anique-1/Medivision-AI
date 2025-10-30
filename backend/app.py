@@ -138,7 +138,7 @@ async def health_check():
 @app.get("/")
 async def root():
     return {
-        "message": "Welcome to Medicine Dispenser API",
+        "message": "Welcome to MediVision API",
         "docs": "/docs",
         "health": "/health"
     }

@@ -5,11 +5,10 @@ import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, Mic, MessageCircle, Plus, Sparkles, Clock } from "lucide-react";
+import { Send, Paperclip, Mic, Plus, Sparkles, Clock } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { motion, useScroll, useTransform } from "framer-motion";
-import { useInView } from "react-intersection-observer";
 import { cn } from "@/lib/utils";
 import { ChatMessageDisplay } from "@/components/ChatMessageDisplay";
 
@@ -31,7 +30,6 @@ interface DisplayMessage {
 }
 
 export default function ChatPage() {
-  // === ALL HOOKS AT TOP LEVEL (Fixed Order) ===
   const bubbleRef = useRef<HTMLDivElement>(null);
   const mouseRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -44,8 +42,6 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState<{ id: number; title: string; date: string }[]>([]);
-
-  // === NO MORE useState INSIDE useEffect ===
 
   /* ---------- Mouse Trail & Bubbles ---------- */
   useEffect(() => {
@@ -138,7 +134,6 @@ export default function ChatPage() {
           ...formatted,
         ]);
 
-        // Mock sidebar history
         setChatHistory([
           { id: 1, title: "Medicine Schedule", date: "Oct 28" },
           { id: 2, title: "Blood Test Results", date: "Oct 25" },
@@ -267,67 +262,93 @@ export default function ChatPage() {
     ]);
   };
 
-  /* ---------- Markdown Formatter ---------- */
+  /* ---------- Enhanced Markdown Formatter ---------- */
   const formatAssistantResponse = (text: string): React.ReactNode => {
-    const renderMarkdown = (markdownText: string): React.ReactNode[] => {
-      const parts: React.ReactNode[] = [];
-      let lastIndex = 0;
-
-      // Bold text: **text** or __text__
-      markdownText = markdownText.replace(/(\*\*|__)(.*?)\1/g, '<strong>$2</strong>');
-
-      // Links: [link text](URL)
-      const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s]+)\)/g;
-      let match;
-
-      while ((match = linkRegex.exec(markdownText)) !== null) {
-        const [fullMatch, linkText, url] = match;
-        const startIndex = match.index;
-        const endIndex = linkRegex.lastIndex;
-
-        if (startIndex > lastIndex) {
-          parts.push(<span key={`text-${lastIndex}`}>{markdownText.substring(lastIndex, startIndex)}</span>);
-        }
-
-        parts.push(
-          <a
-            key={`link-${startIndex}`}
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-400 hover:underline"
-          >
-            {linkText}
-          </a>
-        );
-        lastIndex = endIndex;
-      }
-
-      if (lastIndex < markdownText.length) {
-        parts.push(<span key={`text-${lastIndex}`}>{markdownText.substring(lastIndex)}</span>);
-      }
-      
-      // Convert string parts with <strong> to React elements
-      return parts.flatMap(part => {
-        if (typeof part === 'string') {
-          return part.split(/(<strong>.*?<\/strong>)/g).map((subPart, i) => {
-            if (subPart.startsWith('<strong>') && subPart.endsWith('</strong>')) {
-              return <strong key={`strong-${i}`}>{subPart.slice(8, -9)}</strong>;
-            }
-            return subPart;
-          });
-        }
-        return part;
-      });
-    };
-
     const lines = text.split('\n');
     const elements: React.ReactNode[] = [];
     let inCode = false;
     let codeLines: string[] = [];
 
+    const processLine = (line: string): React.ReactNode => {
+      // Handle code blocks
+      if (line.trim().startsWith('```')) {
+        return null; // Handled outside
+      }
+
+      // Handle headings
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+      if (headingMatch) {
+        const level = headingMatch[1].length;
+        const content = headingMatch[2];
+        const Tag = `h${Math.min(level, 6)}` as keyof JSX.IntrinsicElements;
+
+        return (
+          <Tag className={cn(
+            "font-bold my-3",
+            level === 1 && "text-3xl",
+            level === 2 && "text-2xl",
+            level === 3 && "text-xl",
+            level === 4 && "text-lg",
+            level >= 5 && "text-base"
+          )}>
+            {processInlineMarkdown(content)}
+          </Tag>
+        );
+      }
+
+      // Empty line
+      if (line.trim() === '') {
+        return <br />;
+      }
+
+      // Paragraph
+      return <p className="my-1">{processInlineMarkdown(line)}</p>;
+    };
+
+    const processInlineMarkdown = (text: string): React.ReactNode => {
+      let result: React.ReactNode[] = [text];
+
+      // Bold: **text** or __text__
+      result = result.flatMap(part =>
+        typeof part === 'string'
+          ? part.split(/(\*\*.*?\*\*|__.*?__)/g).map((seg, i) => {
+              if (/^\*\*.*?\*\*$/.test(seg) || /^__.*?__$/.test(seg)) {
+                const inner = seg.slice(2, -2);
+                return <strong key={i} className="font-bold">{processInlineMarkdown(inner)}</strong>;
+              }
+              return seg;
+            })
+          : part
+      );
+
+      // Links: [text](url)
+      result = result.flatMap(part =>
+        typeof part === 'string'
+          ? part.split(/(\[[^\]]+\]\(https?:\/\/[^\s]+\))/g).map((seg, i) => {
+              const match = seg.match(/\[([^\]]+)\]\((https?:\/\/[^\s]+)\)/);
+              if (match) {
+                return (
+                  <a
+                    key={i}
+                    href={match[2]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline font-medium"
+                  >
+                    {match[1]}
+                  </a>
+                );
+              }
+              return seg;
+            })
+          : part
+      );
+
+      return result;
+    };
+
     lines.forEach((line, i) => {
-      if (line.startsWith('```')) {
+      if (line.trim().startsWith('```')) {
         if (inCode) {
           elements.push(
             <pre key={i} className="bg-muted/50 p-4 rounded-xl overflow-x-auto text-sm font-mono my-3 border border-white/10">
@@ -347,29 +368,13 @@ export default function ChatPage() {
         return;
       }
 
-      if (line.startsWith('### ')) {
-        elements.push(<h3 key={i} className="text-xl font-semibold my-3">{line.substring(4)}</h3>);
-        return;
-      }
-
-      if (line.startsWith('## ')) {
-        elements.push(<h2 key={i} className="text-2xl font-bold my-4">{line.substring(3)}</h2>);
-        return;
-      }
-
-      if (line.startsWith('# ')) {
-        elements.push(<h1 key={i} className="text-3xl font-extrabold my-5">{line.substring(2)}</h1>);
-        return;
-      }
-
-      if (line.trim() === '') {
-        elements.push(<br key={i} />);
-      } else {
-        elements.push(<p key={i} className="my-1">{renderMarkdown(line)}</p>);
+      const rendered = processLine(line);
+      if (rendered) {
+        elements.push(<React.Fragment key={i}>{rendered}</React.Fragment>);
       }
     });
 
-    return <>{elements}</>;
+    return <div className="space-y-1">{elements}</div>;
   };
 
   return (
